@@ -241,16 +241,39 @@ app.put('/api/settings', requireUserAuth, (req, res) => {
   res.json({ success: true, data: { rules: next } });
 });
 
+async function extractLastAgentMessage(transcriptPath) {
+  if (!transcriptPath) return '';
+  try {
+    const raw = await fs.promises.readFile(transcriptPath, 'utf8');
+    const lines = raw.trim().split('\n').slice(-25).reverse();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry?.type === 'PLANNER_RESPONSE' && typeof entry.content === 'string' && entry.content.trim()) {
+          return entry.content.trim().slice(0, 320);
+        }
+      } catch {
+        // skip malformed line
+      }
+    }
+  } catch {
+    // transcript may not exist or be readable
+  }
+  return '';
+}
+
 // Hook endpoint (called synchronously by hook/agy-notify-hook.mjs)
 app.post('/api/hooks/event', requireHookAuth, async (req, res) => {
   try {
     const payload = req.body || {};
     const eventType = payload.hookEventName || 'PreToolUse';
-    const rules = getSetting('rules', { run_command: true });
+    const rules = getSetting('rules', { run_command: true, stop_notify: true });
 
     const cwd = payload.cwd || payload.workspacePaths?.[0] || '';
     const projectName = cwd ? path.basename(cwd) : 'Antigravity IDE';
     const conversationId = payload.conversationId || '';
+    console.log(`[hook] ${eventType} (${payload.toolCall?.name || '-'}) project=${projectName}`);
 
     if (eventType === 'PreToolUse') {
       const toolName = payload.toolCall?.name || 'unknown_tool';
@@ -324,10 +347,11 @@ app.post('/api/hooks/event', requireHookAuth, async (req, res) => {
 
       if (rules.stop_notify) {
         const reason = payload.terminationReason || 'NO_TOOL_CALL';
+        const lastAgentMsg = await extractLastAgentMessage(payload.transcriptPath);
         const question =
           reason === 'ERROR'
-            ? `El agente se detuvo por un error: ${payload.error || 'Revisar IDE'}`
-            : `El agente finalizó su turno en ${projectName} y espera tus instrucciones.`;
+            ? `Error en ${projectName}: ${payload.error || 'Revisar IDE'}`
+            : lastAgentMsg || `El agente finalizó su turno en ${projectName} y espera tus instrucciones.`;
 
         await createInfoNotification({
           eventType,

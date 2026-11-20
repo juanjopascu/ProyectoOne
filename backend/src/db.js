@@ -102,7 +102,7 @@ export function initDefaults() {
       run_command: true,
       write_file: false,
       edit_file: false,
-      stop_notify: false,
+      stop_notify: true,
       timeoutSeconds: 180,
       fallbackDecision: 'ask'
     });
