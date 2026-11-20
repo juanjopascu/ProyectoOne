@@ -103,9 +103,29 @@ export default function App() {
   });
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSupported] = useState(() => 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window);
+  const [installPrompt, setInstallPrompt] = useState(null);
   const [toast, setToast] = useState('');
   const [localPairing, setLocalPairing] = useState(null);
   const wsRef = useRef(null);
+
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+  }, []);
+
+  const handleInstallPwa = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+      showToast('📲 App instalada en tu dispositivo');
+    }
+  };
 
   const showToast = (msg) => {
     setToast(msg);
@@ -434,6 +454,16 @@ export default function App() {
       </header>
 
       <main className="content">
+        {installPrompt && (
+          <div className="banner info">
+            <strong>Instalar como App (PWA)</strong>
+            <span>Agrégala a tu pantalla de inicio para recibir notificaciones push en tiempo real.</span>
+            <button className="btn btn-primary" onClick={handleInstallPwa} style={{ padding: '10px 12px', fontSize: 14 }}>
+              Instalar Antigravity Bridge
+            </button>
+          </div>
+        )}
+
         {!pushEnabled && (
           <div className="banner warn">
             <strong>Activa las notificaciones push</strong>
