@@ -47,6 +47,18 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_requests_status_created
     ON requests (status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS instructions (
+    id TEXT PRIMARY KEY,
+    text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    project_name TEXT,
+    created_at TEXT NOT NULL,
+    delivered_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_instructions_status_created
+    ON instructions (status, created_at ASC);
 `);
 
 const getSettingStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -193,4 +205,50 @@ function deserializeRequest(row) {
     expiresAt: row.expires_at,
     resolvedAt: row.resolved_at
   };
+}
+
+export function insertInstruction({ id, text, projectName = '' }) {
+  const createdAt = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO instructions (id, text, status, project_name, created_at)
+    VALUES (?, ?, 'queued', ?, ?)
+  `).run(id, text, projectName, createdAt);
+  return { id, text, status: 'queued', projectName, createdAt, deliveredAt: null };
+}
+
+export function listInstructions(limit = 30) {
+  return db
+    .prepare('SELECT * FROM instructions ORDER BY created_at DESC LIMIT ?')
+    .all(limit)
+    .map((row) => ({
+      id: row.id,
+      text: row.text,
+      status: row.status,
+      projectName: row.project_name || '',
+      createdAt: row.created_at,
+      deliveredAt: row.delivered_at
+    }));
+}
+
+export function popQueuedInstructions(projectName = '') {
+  const queued = db
+    .prepare("SELECT * FROM instructions WHERE status = 'queued' ORDER BY created_at ASC")
+    .all();
+  if (queued.length === 0) return [];
+
+  const deliveredAt = new Date().toISOString();
+  const updateStmt = db.prepare(
+    "UPDATE instructions SET status = 'delivered', project_name = ?, delivered_at = ? WHERE id = ?"
+  );
+  for (const row of queued) {
+    updateStmt.run(projectName || row.project_name || '', deliveredAt, row.id);
+  }
+  return queued.map((row) => ({
+    id: row.id,
+    text: row.text,
+    status: 'delivered',
+    projectName: projectName || row.project_name || '',
+    createdAt: row.created_at,
+    deliveredAt
+  }));
 }

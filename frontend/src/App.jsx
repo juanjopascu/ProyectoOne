@@ -91,6 +91,9 @@ export default function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [tab, setTab] = useState('pending');
   const [requests, setRequests] = useState([]);
+  const [instructions, setInstructions] = useState([]);
+  const [instructionText, setInstructionText] = useState('');
+  const [sendingInstruction, setSendingInstruction] = useState(false);
   const [reasons, setReasons] = useState({});
   const [busyIds, setBusyIds] = useState({});
   const [rules, setRules] = useState({
@@ -183,13 +186,15 @@ export default function App() {
         setAuthenticated(true);
         setAuthError('');
 
-        const [reqRes, setRes] = await Promise.all([
+        const [reqRes, setRes, instRes] = await Promise.all([
           apiFetch('/api/requests'),
-          apiFetch('/api/settings')
+          apiFetch('/api/settings'),
+          apiFetch('/api/instructions')
         ]);
         if (cancelled) return;
         setRequests(reqRes.data || []);
         if (setRes.data?.rules) setRules(setRes.data.rules);
+        setInstructions(instRes.data || []);
 
         if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.ready;
@@ -239,6 +244,10 @@ export default function App() {
             }
           } else if (msg.type === 'request_updated' && msg.data) {
             setRequests((prev) => prev.map((r) => (r.id === msg.data.id ? msg.data : r)));
+          } else if (msg.type === 'instruction_created' && msg.data) {
+            setInstructions((prev) => [msg.data, ...prev.filter((i) => i.id !== msg.data.id)]);
+          } else if (msg.type === 'instruction_updated' && msg.data) {
+            setInstructions((prev) => prev.map((i) => (i.id === msg.data.id ? msg.data : i)));
           }
         } catch {
           // ignore
@@ -256,6 +265,28 @@ export default function App() {
 
   const pendingRequests = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests]);
   const historyRequests = useMemo(() => requests.filter((r) => r.status !== 'pending'), [requests]);
+
+  const handleSendInstruction = async (e) => {
+    e.preventDefault();
+    const text = instructionText.trim();
+    if (!text) return;
+    setSendingInstruction(true);
+    try {
+      const res = await apiFetch('/api/instructions', {
+        method: 'POST',
+        body: JSON.stringify({ text })
+      });
+      if (res.data) {
+        setInstructions((prev) => [res.data, ...prev.filter((i) => i.id !== res.data.id)]);
+      }
+      setInstructionText('');
+      showToast('📩 Indicación enviada al IDE');
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    } finally {
+      setSendingInstruction(false);
+    }
+  };
 
   const handleDecide = async (id, decision) => {
     setBusyIds((prev) => ({ ...prev, [id]: true }));
@@ -496,6 +527,44 @@ export default function App() {
 
         {tab === 'pending' && (
           <>
+            <form className="card" onSubmit={handleSendInstruction}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <strong style={{ fontSize: 15 }}>Dar indicaciones al IDE</strong>
+                <span className="badge">En vivo</span>
+              </div>
+              <textarea
+                className="reason-input"
+                rows={3}
+                placeholder="Escribe una indicación para Antigravity IDE (ej: agrega tests, cambia el color del botón, usa otro enfoque...)"
+                value={instructionText}
+                onChange={(e) => setInstructionText(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={sendingInstruction || !instructionText.trim()}
+                style={{ padding: '11px 14px', fontSize: 14 }}
+              >
+                <Send size={16} /> {sendingInstruction ? 'Enviando...' : 'Enviar indicación'}
+              </button>
+
+              {instructions.length > 0 && (
+                <div className="instruction-list">
+                  {instructions.slice(0, 4).map((inst) => (
+                    <div key={inst.id} className="instruction-item">
+                      <div className="meta-line">
+                        <span className={`badge ${inst.status === 'delivered' ? 'approved' : 'timeout'}`}>
+                          {inst.status === 'delivered' ? 'Entregada al IDE' : 'En cola'}
+                        </span>
+                        <span>{formatTime(inst.createdAt)}</span>
+                      </div>
+                      <div className="instruction-text">{inst.text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </form>
+
             {pendingRequests.length === 0 ? (
               <div className="empty-state">
                 <ShieldAlert size={42} color="#38bdf8" strokeWidth={1.6} />
@@ -528,10 +597,10 @@ export default function App() {
                     </p>
                   )}
 
-                  <input
+                  <textarea
                     className="reason-input"
-                    type="text"
-                    placeholder="Motivo opcional (ej: mejor usa npm test...)"
+                    rows={2}
+                    placeholder="Indicaciones o correcciones para el agente (opcional)..."
                     value={reasons[req.id] || ''}
                     onChange={(e) => setReasons((prev) => ({ ...prev, [req.id]: e.target.value }))}
                   />

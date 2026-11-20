@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -13,11 +14,15 @@ import {
   saveSubscription,
   removeSubscription,
   listRequests,
-  getRequestById
+  getRequestById,
+  insertInstruction,
+  listInstructions,
+  popQueuedInstructions
 } from './db.js';
 import { configureWebPush, getVapidPublicKey, sendPushToAll } from './pushService.js';
 import {
   registerWsClient,
+  broadcast,
   createAndAwaitApproval,
   createInfoNotification,
   resolveApproval
@@ -177,7 +182,38 @@ app.post('/api/requests/:id/decide', requireUserAuth, (req, res) => {
   if (!result.ok) {
     return res.status(result.status).json({ success: false, error: result.error, data: result.request });
   }
+
+  // If the user approved AND wrote an extra instruction, queue it for the next agent step
+  if ((decision === 'approved' || decision === 'allow') && reason && reason.trim()) {
+    const inst = insertInstruction({
+      id: crypto.randomUUID(),
+      text: reason.trim(),
+      projectName: result.request?.projectName || ''
+    });
+    broadcast('instruction_created', inst);
+  }
+
   res.json({ success: true, data: result.request });
+});
+
+// Remote instructions queue (delivered to Antigravity IDE on PreInvocation / Stop)
+app.get('/api/instructions', requireUserAuth, (req, res) => {
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+  res.json({ success: true, data: listInstructions(limit) });
+});
+
+app.post('/api/instructions', requireUserAuth, (req, res) => {
+  const text = String(req.body?.text || '').trim();
+  if (!text) {
+    return res.status(400).json({ success: false, error: 'Escribe una indicación antes de enviar' });
+  }
+  const item = insertInstruction({
+    id: crypto.randomUUID(),
+    text,
+    projectName: String(req.body?.projectName || '')
+  });
+  broadcast('instruction_created', item);
+  res.status(201).json({ success: true, data: item });
 });
 
 // Settings
@@ -259,7 +295,33 @@ app.post('/api/hooks/event', requireHookAuth, async (req, res) => {
       return res.json(result);
     }
 
+    if (eventType === 'PreInvocation') {
+      const delivered = popQueuedInstructions(projectName);
+      if (delivered.length > 0) {
+        delivered.forEach((item) => broadcast('instruction_updated', item));
+        const combined = delivered.map((d) => d.text).join('\n');
+        return res.json({
+          injectSteps: [
+            {
+              userMessage: `[Indicación desde tu teléfono]: ${combined}`
+            }
+          ]
+        });
+      }
+      return res.json({});
+    }
+
     if (eventType === 'Stop') {
+      const delivered = popQueuedInstructions(projectName);
+      if (delivered.length > 0) {
+        delivered.forEach((item) => broadcast('instruction_updated', item));
+        const combined = delivered.map((d) => d.text).join('\n');
+        return res.json({
+          decision: 'continue',
+          reason: `Nuevas indicaciones del usuario desde el teléfono:\n${combined}`
+        });
+      }
+
       if (rules.stop_notify) {
         const reason = payload.terminationReason || 'NO_TOOL_CALL';
         const question =

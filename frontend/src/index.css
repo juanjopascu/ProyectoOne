@@ -232,11 +232,37 @@ body {
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
+  font-family: inherit;
   outline: none;
+  resize: vertical;
 }
 
 .reason-input:focus {
   border-color: var(--primary);
+}
+
+.instruction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.instruction-item {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.instruction-text {
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .actions-row {

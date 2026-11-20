@@ -37,16 +37,27 @@ async function main() {
     outputAndExit({ decision: 'ask' });
   }
 
+  const fallbackForEvent = () => {
+    const ev = payload?.hookEventName;
+    if (ev === 'PreInvocation' || ev === 'PostInvocation' || ev === 'PostToolUse') {
+      return {};
+    }
+    if (ev === 'Stop') {
+      return { decision: 'allow' };
+    }
+    return { decision: 'ask' };
+  };
+
   // If bridge config does not exist yet, fall back cleanly to IDE prompt
   if (!fs.existsSync(CONFIG_PATH)) {
-    outputAndExit({ decision: 'ask' });
+    outputAndExit(fallbackForEvent());
   }
 
   let config;
   try {
     config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
-    outputAndExit({ decision: 'ask' });
+    outputAndExit(fallbackForEvent());
   }
 
   const baseUrl = config.url || 'http://127.0.0.1:4789';
@@ -59,11 +70,11 @@ async function main() {
     const healthRes = await fetch(`${baseUrl}/api/health`, { signal: healthCtrl.signal });
     clearTimeout(healthTimer);
     if (!healthRes.ok) {
-      outputAndExit({ decision: 'ask' });
+      outputAndExit(fallbackForEvent());
     }
   } catch {
     // Bridge server is offline -> transparently fall back to IDE confirmation
-    outputAndExit({ decision: 'ask' });
+    outputAndExit(fallbackForEvent());
   }
 
   // Forward event and wait for phone approval (up to 235s)
