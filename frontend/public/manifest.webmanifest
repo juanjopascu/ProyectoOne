@@ -1,0 +1,18 @@
+{
+  "name": "Antigravity Bridge",
+  "short_name": "AGY Bridge",
+  "description": "Notificaciones push y aprobaciones en tiempo real para Antigravity IDE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

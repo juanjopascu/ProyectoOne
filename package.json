@@ -1,0 +1,15 @@
+{
+  "name": "antigravity-phone-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PWA + Push Notification approval bridge for Antigravity IDE",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "build": "npm --prefix frontend run build",
+    "start": "node backend/src/server.js",
+    "dev:backend": "node --watch backend/src/server.js",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "tunnel": "npx --yes cloudflared tunnel --url http://localhost:4789",
+    "test:hook": "node hook/test-hook.mjs"
+  }
+}
