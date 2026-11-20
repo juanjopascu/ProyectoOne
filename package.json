@@ -10,6 +10,7 @@
     "dev:backend": "node --watch backend/src/server.js",
     "dev:frontend": "npm --prefix frontend run dev",
     "tunnel": "npx --yes cloudflared tunnel --url http://localhost:4789",
+    "status": "./scripts/bridge-status.sh",
     "test:hook": "node hook/test-hook.mjs"
   }
 }
